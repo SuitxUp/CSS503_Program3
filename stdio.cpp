@@ -72,7 +72,7 @@ int printf(const void *format, ...)
 		else
 		{
 			buf[j++] = msg[i++];
-		}	
+		}	 
 	}
 	if (j > 0)
 	{
@@ -230,14 +230,28 @@ FILE *fopen(const char *path, const char *mode)
 
 int fpurge(FILE *stream)
 {
-	// complete it 
-	return 0;
+	if(stream == nullptr) {
+      return 0;
+   }else{
+      stream->buffer = (char*) 0;
+      stream->pos = 0;
+   }
+
+   return 0;
 }
 
 int fflush(FILE *stream) 
 {
-	// comlete it
-	return 0;
+	if(stream->buffer == nullptr || stream->pos == 0)
+	   return 0;
+
+   //write bytes in buffer
+   int writeBytes = write(stream->fd, stream->buffer, stream->pos);
+   if(writeBytes == -1)
+      return -1;
+   
+   stream->pos = 0;
+   return 0;
 }
 
 // ** Replace with your own comments **
@@ -253,37 +267,130 @@ int fflush(FILE *stream)
 //					   the sizes of the largest objects possible in memory)
 size_t fread(void *ptr, size_t size, size_t nmemb, FILE *stream) 
 {
-	// complete it
-	return 0;
+	size_t readBytes = 0;
+   size_t totalBytes = nmemb * size;
+
+   //check flag to see if it is readable
+   if(stream->flag == O_WRONLY)
+      return 0;
+
+   if(stream->mode != _IONBF){
+      //check to see if the buffer is empty
+      if(stream->pos >= stream->actual_size){
+         //buffer is empty, read and fill buffer
+         stream->actual_size = read(stream->fd, stream->buffer, stream->size);
+         stream->pos = 0;
+         if(stream->actual_size <= 0){
+            stream->eof = true;
+            return 0;
+         }
+      }
+      
+      //read data from buffer
+      //first check to see that the requested bytesleft is small than the number of bytes left to read
+      //if not then set to bytes left to read to bytesLeft
+      size_t bytesLeft = totalBytes;
+      if(bytesLeft > (stream->actual_size - stream->pos)) {
+         bytesLeft = stream->actual_size - stream->pos;
+      }
+
+      //copy data from buffer to ptr (aka FILE)
+      memcpy(ptr, stream->buffer + stream->pos, bytesLeft);
+      stream->pos += bytesLeft;
+      readBytes += bytesLeft;
+
+   } else {
+
+      //no buffer just read from file
+      readBytes = read(stream->fd, ptr, totalBytes);
+      if(readBytes <= 0) {
+         stream->eof = true;
+      }
+   }
+
+   //number of elements read
+	return readBytes/size;
 }
 
 size_t fwrite(const void *ptr, size_t size, size_t nmemb, FILE *stream) 
 {
-	// comlete it
-	return 0;
+	//Calculate bytes to write
+   size_t totalBytes = size * nmemb;
+
+   //write data to file
+   size_t writeBytes = write(stream->fd, ptr, totalBytes);
+   
+   if(writeBytes <= 0)
+      return -1;
+
+   return writeBytes/size;
 }
 
 int fgetc(FILE *stream) 
 {
-	// complete it
-	return 0;
+	//Check to see if buffer is empty
+   if(stream->pos >= stream->actual_size){
+      //Buffer is empty, read and fill buffer
+      stream->actual_size = read(stream->fd, stream->buffer, stream->size);
+      stream->pos = 0;
+
+      if(stream->actual_size <= 0){
+         stream->eof = true;
+         return -1;
+      }
+   }
+   //read a character from the buffer and incremenet pos
+   int getchar = stream->buffer[stream->pos];
+   stream->pos++;
+
+	return getchar;
 }
 
 int fputc(int c, FILE *stream) 
 {
-	// complete it
-	return 0;
+	//Check if buffer is full
+   if(stream->pos >= stream->size){
+      //buffer full flush it
+      fflush(stream);
+   }
+
+   stream->buffer[stream->pos++] = c;
+
+	return c;
 }
 
 char *fgets(char *str, int size, FILE *stream) 
 {
-	// complete it
-	return NULL;
+	int readBytes = 0;
+   
+   while(readBytes < size - 1){
+      //grab character from input buffer
+      char c = (char) fgetc(stream);
+
+      //store in string
+      str[readBytes] = c;
+      readBytes++;
+
+      if(c = '\n')
+         break;
+
+   }
+
+	return str;
 }
 
 int fputs(const char *str, FILE *stream) 
 {
-	// complete it
+	int writeBytes = 0;
+
+   //check to see if buffer has enough space
+   if(stream->pos + strlen(str) >= stream->size)
+      fflush(stream);
+
+   for(int i = 0; i < strlen(str); i++){
+      int c = fputc((int)str[i], stream);
+   }
+
 	return 0;
 }
 
