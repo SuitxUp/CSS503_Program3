@@ -242,8 +242,9 @@ int fpurge(FILE *stream)
 
 int fflush(FILE *stream) 
 {
-	if(stream->buffer == nullptr || stream->pos == 0)
-	   return 0;
+   //check to see if it needs to be flushed
+	if(stream == nullptr || stream->flag == O_RDONLY)
+	   return -1;
 
    //write bytes in buffer
    int writeBytes = write(stream->fd, stream->buffer, stream->pos);
@@ -251,20 +252,20 @@ int fflush(FILE *stream)
       return -1;
    
    stream->pos = 0;
+   stream->actual_size = 0;
    return 0;
-}
+}  
 
-// ** Replace with your own comments **
-// fread (Sample input/return parameter comments - For full behavior, consult C documentation for stdio functions)
-// Reads data from a given stream into a ptr buffer
-// Input parameters: ptr = pointer to the buffer where the data read from the file will be stored
-//					 size = the size(in bytes) of each element to be read,
-//					 nmemb(count) = the number of elements that will be read from the file, each one with "size" bytes
-//					 stream = pointer to the file to read from
-// Returns: 		 total number of elements read.  (Note: can be less than requested items)
-//					 (Note: size_t is an unsigned integer type that is often used as the return type to represent 
-//					   returned sizes of objects.  By using size_t vs int, you can guarantee a non-neg value that can represent
-//					   the sizes of the largest objects possible in memory)
+/// @brief fread (Sample input/return parameter comments - For full behavior, consult C documentation for stdio functions)
+///        Reads data from a given stream into a ptr buffer
+/// @param ptr pointer to the buffer where the data read from the file will be stored
+/// @param size the size(in bytes) of each element to be read
+/// @param nmemb the number of elements that will be read from the file, each one with "size" bytes
+/// @param stream pointer to the file to read from
+/// @return total number of elements read.  (Note: can be less than requested items)
+//			   (Note: size_t is an unsigned integer type that is often used as the return type to represent 
+//			   returned sizes of objects.  By using size_t vs int, you can guarantee a non-neg value that can represent
+//				the sizes of the largest objects possible in memory)
 size_t fread(void *ptr, size_t size, size_t nmemb, FILE *stream) 
 {
 	size_t readBytes = 0;
@@ -365,17 +366,26 @@ char *fgets(char *str, int size, FILE *stream)
    
    while(readBytes < size - 1){
       //grab character from input buffer
-      char c = (char) fgetc(stream);
+      int c = fgetc(stream);
+
+      //EOF check
+      if(c == -1){
+         if(readBytes == 0)
+            return nullptr;
+         else
+            break;
+      }
 
       //store in string
-      str[readBytes] = c;
+      str[readBytes] = (char)c;
       readBytes++;
 
-      if(c = '\n')
+      if(c == '\n')
          break;
 
    }
 
+   str[readBytes] = '\0';
 	return str;
 }
 
@@ -401,12 +411,32 @@ int feof(FILE *stream)
 
 int fseek(FILE *stream, long offset, int whence) 
 {
-	// complete it
+   //flush the buffer
+   fflush(stream);
+
+
+	if(lseek(stream->fd, offset, whence) == -1)
+      return -1;
+   
+   stream->pos = 0;
+   stream->actual_size = 0;
+   stream->eof = false;
 	return 0;
 }
 
 int fclose(FILE *stream) 
 {
-	// complete it
+	if(stream == nullptr)
+      return -1;
+   
+   //flush buffer
+   fflush(stream);
+
+   int fdClose = close(stream->fd);
+   if(fdClose < 0)
+      return -1;
+
+   free(stream);
+   
 	return 0;
 }
