@@ -228,6 +228,9 @@ FILE *fopen(const char *path, const char *mode)
   return stream;
 }
 
+/// @brief purges the buffer stream and resets the position
+/// @param stream File pointer to purger
+/// @return a 0 if successful purged
 int fpurge(FILE *stream)
 {
 	if(stream == nullptr) {
@@ -235,11 +238,15 @@ int fpurge(FILE *stream)
    }else{
       stream->buffer = (char*) 0;
       stream->pos = 0;
+      stream->actual_size = 0;
    }
 
    return 0;
 }
 
+/// @brief flushes the buffer to the file descriptor associated with stream
+/// @param stream File pointer
+/// @return 0 if successful, -1 if not
 int fflush(FILE *stream) 
 {
    //check to see if it needs to be flushed
@@ -313,20 +320,63 @@ size_t fread(void *ptr, size_t size, size_t nmemb, FILE *stream)
 	return readBytes/size;
 }
 
+/// @brief fwrite, writes the data using the stream FILE
+/// @param ptr pointer to the buffer where we will write to
+/// @param size the size(in bytes) of each element to be read
+/// @param nmemb the number of elements that will be read from the file, each one with "size" bytes
+/// @param stream pointer to the file to read from
+/// @return total number of elements written
 size_t fwrite(const void *ptr, size_t size, size_t nmemb, FILE *stream) 
 {
+   if (stream == NULL || stream->fd < 0) {
+      // Invalid file pointer or file descriptor
+      return 0;
+   }
+   
+   if(stream->flag == O_RDONLY)
+      return 0;
+
 	//Calculate bytes to write
    size_t totalBytes = size * nmemb;
+   size_t writeBytes = 0;
 
-   //write data to file
-   size_t writeBytes = write(stream->fd, ptr, totalBytes);
-   
+   if(stream->mode != _IONBF){
+      if(stream->pos + totalBytes >= stream->size)
+         fflush(stream);
+      
+      //loop to ensure all bytes are written in case total grabbed is larger than buffer
+      size_t remainBytes = totalBytes;
+      size_t bufferSpace;
+      while(remainBytes > 0){
+         bufferSpace = stream->size - stream->pos;
+
+         if(bufferSpace == 0){
+            fflush(stream);
+            bufferSpace = stream->size;
+            stream->pos = 0;
+         }
+      
+         //copy bytes either the whole buffer or whats left
+         size_t bytesToCopy = (remainBytes < bufferSpace) ? remainBytes : bufferSpace;
+         memcpy(stream->buffer + stream->pos, ptr, bytesToCopy);
+         stream->pos += bytesToCopy;
+         remainBytes -= bytesToCopy;
+      }
+
+      writeBytes = totalBytes;
+   }else {
+      writeBytes = write(stream->fd, ptr, totalBytes);
+   }
+
    if(writeBytes <= 0)
       return -1;
 
    return writeBytes/size;
 }
 
+/// @brief gets a single character from the buffer
+/// @param stream FILE pointer
+/// @return the char value as an int or -1 if eof
 int fgetc(FILE *stream) 
 {
 	//Check to see if buffer is empty
@@ -347,6 +397,10 @@ int fgetc(FILE *stream)
 	return getchar;
 }
 
+/// @brief puts a single character into the buffer
+/// @param c char to insert
+/// @param stream FILE pointer
+/// @return the char value as an int or -1 if eof
 int fputc(int c, FILE *stream) 
 {
 	//Check if buffer is full
@@ -360,6 +414,10 @@ int fputc(int c, FILE *stream)
 	return c;
 }
 
+/// @brief gets a string of characters from the buffer
+/// @param str char array to fill
+/// @param stream FILE pointer
+/// @return the string as a char array pointer
 char *fgets(char *str, int size, FILE *stream) 
 {
 	int readBytes = 0;
@@ -389,6 +447,10 @@ char *fgets(char *str, int size, FILE *stream)
 	return str;
 }
 
+/// @brief puts a string of characters into the buffer
+/// @param str char array to insert
+/// @param stream FILE pointer
+/// @return 0 if succcessful
 int fputs(const char *str, FILE *stream) 
 {
 	int writeBytes = 0;
@@ -404,16 +466,23 @@ int fputs(const char *str, FILE *stream)
 	return 0;
 }
 
+/// @brief gets eof bool
+/// @param stream FILE pointer
+/// @return 0 if false 1 if true
 int feof(FILE *stream) 
 {
 	return stream->eof == true;
 }
 
+/// @brief move the file pointer based off the offset and whence condition
+/// @param stream FILE pointer
+/// @param offset how far to move the file pointer
+/// @param whence SEEK condtion SEEK_SET, SEEK_END, SEEK_CUR
+/// @return 0 if succcessful
 int fseek(FILE *stream, long offset, int whence) 
 {
    //flush the buffer
    fflush(stream);
-
 
 	if(lseek(stream->fd, offset, whence) == -1)
       return -1;
@@ -424,6 +493,9 @@ int fseek(FILE *stream, long offset, int whence)
 	return 0;
 }
 
+/// @brief close the file
+/// @param stream FILE pointer to close
+/// @return 0 if successful -1 if not
 int fclose(FILE *stream) 
 {
 	if(stream == nullptr)
